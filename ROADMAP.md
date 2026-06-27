@@ -30,13 +30,13 @@ Port-selective from Knovo; one subphase per slice; build gate green before each 
   - [x] Port the auth test; prove cross-role denials (planner ∌ `push_commit`/`merge`; reviewer ∌ `merge`/`push_commit`)
   - [x] Minimal CI workflow (typecheck + test) so the PR gates green
   - [x] **gate:** typecheck + test green
-- **P1.2 — Ticket model + governed API skeleton**
-  - [ ] `artifact → ticket` + `upstream_refs` (`kind ∈ client_request|spec|issue|design_doc|parent_ticket`, dedup `UNIQUE(kind,uid)`)
-  - [ ] Port the governed write helpers (validate-shape / transition / audit / revisions / soft-delete) → `/api/agent/*`
-  - [ ] Port `routine_runs` + the directive-as-data queue verbatim
-- **P1.3 — Supabase migrations + harden the unrun spine**
-  - [ ] Initial migration (tickets/upstream_refs/directives/revisions/audit_log/routine_runs); RLS default-deny
-  - [ ] `.env.example` lockstep; minimal CI workflow (typecheck+test) so future PRs gate green
+- **P1.2 — Provision DBs + ticket model + governed API skeleton**
+  - [ ] **Provision `looprr-dev` + `looprr-prod`** via the Supabase MCP (Blokz Team, us-east-1, $0/mo — `memory/facts/0006`). Dev flows freely; prod is human-gated.
+  - [ ] Initial migration → `supabase/migrations/0001_init.sql`: `tickets` + `upstream_refs` (`kind ∈ client_request|spec|issue|design_doc|parent_ticket`, dedup `UNIQUE(kind,uid)`) + `directives` + `revisions` + `audit_log` + `routine_runs`. Apply live via `apply_migration` to dev; `generate_typescript_types` → `lib/database.types.ts`.
+  - [ ] Port the governed write helpers (validate-shape / transition / audit / revisions / soft-delete) → `/api/agent/*`; port the directive-as-data queue verbatim
+- **P1.3 — RLS + harden the unrun spine**
+  - [ ] RLS default-deny on every table; agent governance enforced in the API (service-role), not RLS; run `get_advisors(security)` and close findings
+  - [ ] `.env.example` lockstep; CI already gates typecheck+test (added in P1.1)
 - [ ] **CHECKPOINT G1:** CI green; a ticket can be created/transitioned by a verb-scoped token through the governed API; cross-role denials proven by test; audit+revision rows on every mutation; `.env.example` lockstep
 > *(Numbering note: G1 here is the merged "repoint" checkpoint; the loop-closing checkpoint is G2 below.)*
 

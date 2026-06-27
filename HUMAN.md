@@ -42,7 +42,7 @@ cannot do it), `CARVE-OUT` (deliberate deferral), `OPEN-Q`.
 | ID | Item | Note |
 |---|---|---|
 | H-01 | Provision a **GitHub App** (server-side token) + set branch protection on target repos. | Needed before P2 (the real merge gate). |
-| H-02 | Create the LoopRR Supabase + Vercel projects; set secrets (service-role key, GitHub App key). | Before P2 wiring. Zero secrets in the repo. |
+| H-02 | ~~Create the LoopRR Supabase projects~~ → **Claude can now do this** via the Supabase MCP ($0/mo; `memory/facts/0006`). Human still owns: the **Vercel project**, and handling **production secrets** (service-role key, GitHub App key) in Vercel/env. | Project creation needs your one-word go (account resource). Zero secrets in the repo. |
 | H-03 | Confirm the remaining platform fact (Q-01). | Narrowed below. |
 
 ## Open questions (OPEN-Q)
