@@ -51,6 +51,16 @@ with the **owner themselves** (dogfood: point LoopRR at its own repo). Horizonta
   reconstructable from the ledger.
 - **P5:** a second org runs its own fleet on LoopRR with proven tenant isolation.
 
+## North star (V2, owner-directed — not current scope)
+Beyond the V1 BYOR substrate, the recorded flagship is a **LoopRR-hosted, model/provider-agnostic
+execution fleet** — LoopRR runs the agents itself (e.g. via the Vercel AI SDK) across Claude / GPT /
+Gemini / open models, instead of the user's own Claude routines. It removes BYOR setup friction, gives
+LoopRR per-tenant identity + metering + billing (the real multi-tenant SaaS), hedges providers, and —
+by owning the runtime — yields an **authoritative completion signal** that upgrades the ledger/replay
+moat (closing D-04's inference fallback). Cost: LoopRR bears LLM + execution infra and must rebuild the
+orchestration the Claude-Code harness gives V1 for free. **Gated on V1 demand** (scope wall). See
+`DECISIONS.md` "V2 north-star note" and `ROADMAP.md` "Platform horizon V2".
+
 ## What LoopRR is NOT (at launch)
 - **Not a hosted agent fleet** — it coordinates the user's own routines (Decision 1).
 - **Not a code-correctness oracle** — correctness is CI/tests/human review, never schema validation.

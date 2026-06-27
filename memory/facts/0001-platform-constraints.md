@@ -6,13 +6,19 @@ design. The human runs Knovo's routines and can confirm (HUMAN.md Q-01). Self-he
 contradiction.
 
 Claimed facts:
-1. **No run-completion callback.** At dispatch the platform returns a session id/url only; there is no
-   webhook/callback when a routine run *finishes*. → server-side `clock_out`/`duration` cannot be
-   derived from authoritative signals (D-04).
-2. **Single-account identity + shared cap.** Routines belong to one claude.ai account, are unshared,
-   act AS the operator's GitHub + connector identity, and draw on one shared per-account daily run
-   cap. → no platform substrate for *multi-tenant routines* (drives BYO-routines, D-01) and a
-   livelock starves the whole fleet (cost red line).
+1. **No run-completion callback (from the platform).** At dispatch the platform returns a session
+   id/url only; there is (likely) no webhook when a routine run *finishes*. **But we don't need one** —
+   the worker self-reports completion in-band (`clock_out` as its last instruction), corroborated by the
+   GitHub terminal artifact; only an abnormal end falls back to "last seen" (D-04, refined). Confirm
+   the platform fact firsthand (the design is robust either way; if a callback *does* exist it's a bonus).
+2. **Single-account identity + shared cap — REFRAMED for BYOR (D-01).** Routines belong to one
+   claude.ai account and act AS that account's GitHub + connector identity, drawing on that account's
+   run cap. Under **bring-your-own-routines this is the whitelabel mechanism, not a LoopRR limit**:
+   each tenant runs routines in *their own* account/cap. The only design implication is **intra-tenant**
+   — one tenant's own routines share that tenant's cap, so a Reviewer↔Implementer livelock starves
+   *that tenant's* fleet (per-tenant cost red line; cap loop-backs). *(A LoopRR-hosted fleet — V2 — would
+   instead run agents under LoopRR's own execution layer with per-tenant metering; see DECISIONS "V2
+   north-star note".)*
 3. **Best-effort GitHub webhooks.** Webhook events are rate-capped during the research preview and
    silently dropped over cap. → event-driven coordination is best-effort; back it with a ≥1h
    reconciling poll sweep.

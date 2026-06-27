@@ -5,8 +5,9 @@ in-progress · `[x]` done (green build gate) · `[!]` blocked (see HUMAN.md). **
 green build gate.** Never cross an unmet CHECKPOINT. Sequencing rule: **never let the moat-engine,
 replay, the storefront, or multi-tenancy precede a loop that has closed at least once.**
 
-> Status: **Phase 0 in progress.** The product BUILD (P0) is gated on the human approving this
-> roadmap + the pending DECISIONS (`HUMAN.md`).
+> Status: **Phase 0 complete; P1 in progress.** Gate passed 2026-06-27 — the Co-Founder ratified
+> D-01…D-09 and greenlit P1 (`HUMAN.md`). Per the session branch directive, Phase 0 + P1 land on the
+> single branch `claude/looprr-phase-0-setup-uh6h9h` (HUMAN.md C-04).
 
 ---
 
@@ -18,15 +19,25 @@ replay, the storefront, or multi-tenancy precede a loop that has closed at least
 - [x] Lay down the harness (`CLAUDE.md`/`AGENTS.md`), the loop spec (`docs/ultraloop.md`), and this roadmap
 - [x] Write the foundation specs (`foundation/*`), `DECISIONS.md`, `HUMAN.md`, `VERIFICATION.md`
 - [x] Seed the versioned memory dir (`memory/index.md` + one-fact files)
-- [ ] **CHECKPOINT G0-plan:** human ratifies the pending DECISIONS (D-01…D-09) + this roadmap → unlocks P1 build
-- [ ] Resolve D-09 (codebase seeding: port-selective vs fork-whole vs clean-room) → then execute it
+- [x] **CHECKPOINT G0-plan:** human ratified D-01…D-09 + this roadmap → P1 unlocked (2026-06-27)
+- [x] Resolve D-09 (codebase seeding) → **port-selective**
 
-## Phase 1 — Repoint the spine (single-operator, single-repo) · *gated on G0-plan*
-- [ ] Seed the codebase per D-09; strip the molecular/content kit
-- [ ] Rename `/api/worker/* → /api/agent/*`; re-type `WorkerId = planner|implementer|reviewer|supervisor` + the VERBS map
-- [ ] `artifact → ticket` with `upstream_refs` (`kind ∈ client_request|spec|issue|design_doc|parent_ticket`, dedup on `UNIQUE(kind,uid)`)
-- [ ] Keep audit / revisions / soft-delete / `routine_runs` / directive-queue verbatim; harden the operationally-unrun spine
-- [ ] **CHECKPOINT G1a:** CI green; a ticket can be created/transitioned by a verb-scoped token through the governed API; cross-role denials proven by test (planner cannot `push_commit`; reviewer cannot `merge`); audit+revision rows on every mutation; `.env.example` lockstep
+## Phase 1 — Repoint the spine (single-operator, single-repo) · *gated on G0-plan ✓*
+Port-selective from Knovo; one subphase per slice; build gate green before each `[x]`.
+- **P1.1 — Project scaffold + auth spine**
+  - [~] Initialize the Node/TS toolchain (package.json, tsconfig, vitest) — port-selective
+  - [ ] Port `lib/worker-auth.ts → lib/agent-auth.ts`; re-type `AgentId = planner|implementer|reviewer|supervisor` + the VERBS map
+  - [ ] Port the auth test; prove cross-role denials (planner ∌ `push_commit`; reviewer ∌ `merge`)
+  - [ ] **gate:** typecheck + test green
+- **P1.2 — Ticket model + governed API skeleton**
+  - [ ] `artifact → ticket` + `upstream_refs` (`kind ∈ client_request|spec|issue|design_doc|parent_ticket`, dedup `UNIQUE(kind,uid)`)
+  - [ ] Port the governed write helpers (validate-shape / transition / audit / revisions / soft-delete) → `/api/agent/*`
+  - [ ] Port `routine_runs` + the directive-as-data queue verbatim
+- **P1.3 — Supabase migrations + harden the unrun spine**
+  - [ ] Initial migration (tickets/upstream_refs/directives/revisions/audit_log/routine_runs); RLS default-deny
+  - [ ] `.env.example` lockstep; minimal CI workflow (typecheck+test) so future PRs gate green
+- [ ] **CHECKPOINT G1:** CI green; a ticket can be created/transitioned by a verb-scoped token through the governed API; cross-role denials proven by test; audit+revision rows on every mutation; `.env.example` lockstep
+> *(Numbering note: G1 here is the merged "repoint" checkpoint; the loop-closing checkpoint is G2 below.)*
 
 ## Phase 2 — Close the loop on ONE repo + ledger from day one · *gated on G1a*
 - [ ] Wire the GitHub App (server-side token); routines push `claude/*` branches only
@@ -60,6 +71,17 @@ replay, the storefront, or multi-tenancy precede a loop that has closed at least
 - [ ] Usage-quota `429` with in-flight drain; per-tenant secret scoping + egress controls + encryption-at-rest
 - [ ] Billing (Stripe/Paddle) as a separate high-risk PR; free `‹slug›.looprr.*` + Pro custom domains
 - [ ] **CHECKPOINT G5:** isolation test passes; an agent cannot exfiltrate secrets or reach disallowed egress; quota caps without starving in-flight work
+
+---
+
+## Platform horizon V2 — hosted, model/provider-agnostic execution fleet · *north-star; gated on V1 demand*
+> Harvested 2026-06-27 (CARVE-OUT V2-01; DECISIONS "V2 north-star note"). **Not current scope** —
+> sequence wall: never before the V1 BYOR loop proves demand.
+- [ ] LoopRR **runs the agents itself** (e.g. Vercel AI SDK) across Claude / GPT / Gemini / open models
+- [ ] Per-tenant identity + metering + billing by owning execution (true multi-tenant SaaS substrate)
+- [ ] **Authoritative completion signal** from owning the runtime → upgrades the ledger/replay moat (resolves D-04's inference fallback)
+- [ ] Provider/model hedging; per-run model routing
+- [ ] Rebuild the orchestration the Claude-Code harness gives V1 for free (the cost of owning execution)
 
 ---
 

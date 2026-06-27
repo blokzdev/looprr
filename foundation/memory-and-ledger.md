@@ -34,14 +34,23 @@ clock_events(
   critical path**, so a routine firing never waits on memory reasoning. The slow path (P3) is the
   Librarian consolidating.
 
-### Honesty note (D-04, load-bearing)
-The Claude-Code platform has **no run-completion callback** — only a session id/url at dispatch. So
-server-derived `clock_out`/`duration` from authoritative signals are **impossible**, and we refuse to
-trust worker-self-reported clocks. Therefore:
-- `clock_in` and mid-run `status` are **authoritative** (server-stamped when the routine calls the API).
-- `clock_out` is **inferred** (last-heartbeat + stale-timeout, or derived from the terminal GitHub
-  artifact) and **explicitly flagged non-authoritative**.
-- The team calendar surfaces **"last seen", not "duration worked".**
+### Honesty note (D-04, load-bearing) — agent-driven + corroborated, not a platform callback
+We do **not** depend on a platform run-completion webhook (likely none exists — at dispatch the
+platform returns a session id/url only; Q-01a). The worker is *our own agent*, so completion is
+signalled **in-band** and corroborated, with a four-tier reliability ladder:
+1. **`clock_in` — authoritative.** Server-stamped UTC when the worker first calls `/api/agent/clock_in`.
+2. **Heartbeats (`status`) — authoritative.** Server-stamped progress/liveness as it works.
+3. **`clock_out` — self-reported, authoritative *when present*.** The worker's prompt makes
+   `POST /api/agent/clock_out` its **last instruction**. Present ⇒ real end; use it.
+4. **GitHub terminal artifact — strong corroborator.** For Implementer/Reviewer the run culminates in
+   a push/PR; that webhook is a platform-delivered, near-authoritative end signal independent of
+   self-report.
+- **Only an abnormal end** (crash / daily-cap / kill → no clock_out *and* no artifact) falls back to a
+  **stale-timeout → "last seen at T".** That — and only that — is inference.
+- Therefore `duration` is **authoritative when both ends exist**, "last seen" only for a silently-died
+  run; **never fabricated.** The calendar labels each row by its tier so inference never reads as fact.
+- *(V2 hosted runtime owns the process → exit = an authoritative completion callback; no self-report,
+  no inference. A reason V2 deepens the moat — DECISIONS "V2 north-star note".)*
 
 ## Four dev-native typed memories (MIRIX, collapsed 6→4)
 A `memory_type` enum, **not** separate databases. The router (a single LLM call) tags each incoming
