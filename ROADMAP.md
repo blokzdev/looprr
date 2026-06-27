@@ -24,11 +24,12 @@ replay, the storefront, or multi-tenancy precede a loop that has closed at least
 
 ## Phase 1 — Repoint the spine (single-operator, single-repo) · *gated on G0-plan ✓*
 Port-selective from Knovo; one subphase per slice; build gate green before each `[x]`.
-- **P1.1 — Project scaffold + auth spine**
-  - [~] Initialize the Node/TS toolchain (package.json, tsconfig, vitest) — port-selective
-  - [ ] Port `lib/worker-auth.ts → lib/agent-auth.ts`; re-type `AgentId = planner|implementer|reviewer|supervisor` + the VERBS map
-  - [ ] Port the auth test; prove cross-role denials (planner ∌ `push_commit`; reviewer ∌ `merge`)
-  - [ ] **gate:** typecheck + test green
+- **P1.1 — Project scaffold + auth spine** ✓ (gate green: typecheck + 10 tests)
+  - [x] Initialize the Node/TS toolchain (package.json, tsconfig, vitest) — port-selective
+  - [x] Port `lib/worker-auth.ts → lib/agent-auth.ts`; re-type `AgentId = planner|implementer|reviewer|supervisor` + the VERBS map
+  - [x] Port the auth test; prove cross-role denials (planner ∌ `push_commit`/`merge`; reviewer ∌ `merge`/`push_commit`)
+  - [x] Minimal CI workflow (typecheck + test) so the PR gates green
+  - [x] **gate:** typecheck + test green
 - **P1.2 — Ticket model + governed API skeleton**
   - [ ] `artifact → ticket` + `upstream_refs` (`kind ∈ client_request|spec|issue|design_doc|parent_ticket`, dedup `UNIQUE(kind,uid)`)
   - [ ] Port the governed write helpers (validate-shape / transition / audit / revisions / soft-delete) → `/api/agent/*`
