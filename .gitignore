@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# env / secrets — ZERO secrets in the repo
+.env
+.env.local
+.env*.local
+*.pem
+*.key
+
+# build
+.next/
+out/
+dist/
+build/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+
+# os / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
