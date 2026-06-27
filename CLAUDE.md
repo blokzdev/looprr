@@ -19,8 +19,9 @@ fleet reads is a separate, generated artifact — see `foundation/worker-team.md
 5. `HUMAN.md` — the human-in-the-loop ledger (open decisions, carve-outs, things only the human can do).
 6. `foundation/vision.md` and `foundation/prd.md` — what we're building and why.
 7. Then, as relevant: `foundation/architecture.md`, `memory-and-ledger.md`, `coordination.md`,
-   `worker-team.md`, `data-model.md`, `security-and-privacy.md`, `knovo-reuse.md`;
-   `memory/index.md` (durable facts); `research/README.md` (grounding papers).
+   `worker-team.md`, `data-model.md`, `security-and-privacy.md`, `knovo-reuse.md`,
+   `research-grounding.md` (paper → capability → moat); `memory/index.md` (durable facts);
+   `research/README.md` (grounding papers).
 
 ## Standing invariants (never violate; if tempted, log to ROADMAP backlog / HUMAN.md and ask)
 1. **Two governed write boundaries.** (a) The **DB boundary** — the governed LoopRR API is the sole

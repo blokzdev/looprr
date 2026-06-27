@@ -44,8 +44,22 @@ Two-axis human→agent instruction: `action` (what to do) × `merge_after` (publ
 `note` + `options`. Actionable directives enter the agent queue; plain notes are a human record.
 
 ### clock_events — **the ledger** *(new; the moat substrate, P2)*
-See `memory-and-ledger.md` for the full column list and the clock-out honesty note. Append-only;
-server-stamped `started_at`; spatial key `(repo, branch, worktree)`; `ref` = SHA/PR/run.
+Append-only event stream; full column list + the three axes (clock / heartbeat / check) + the
+clock-out honesty note in `memory-and-ledger.md`. Server-stamped `at`; spatial key `(repo, branch,
+worktree)` extended by `scope` for resource events; `ref` = SHA/PR/run. `event_type ∈
+clock_in|heartbeat|clock_out|check_out|check_in|blocked|handoff|plan_emitted`.
+
+### resource_claims — **the spatial coordination plane** *(new; P2)*
+Materialized current state projected from `check_*` events; powers conflict reporting + the assignment
+gate. `(id, tenant_id, worker_id, run_id, repo, scope, scope_kind[file|glob|dir|module|ticket],
+status[active|released|expired], claimed_at, released_at, heartbeat_at)`. Advisory presence; the
+deterministic enforcement is the Supervisor's scope-aware dispatch (`coordination.md`); git is the
+safety net. Stale claims (aged `heartbeat_at`) auto-expire.
+
+### digital-footprint views — **the product face of the ledger** *(new; P2)*
+DB views, not tables: `footprint_worker` (filter to one actor = its trajectory), `footprint_fleet`
+(the live situational map), `footprint_space` (group by `(repo, scope)` = who touched/touches this).
+Rendered by the HUD team calendar.
 
 ### routine_runs *(inherited verbatim — Knovo migration 0010)*
 Correlates each dispatch to a Claude session deep link ("Open session" in the HUD).

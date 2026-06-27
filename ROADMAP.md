@@ -44,7 +44,9 @@ Port-selective from Knovo; one subphase per slice; build gate green before each 
 - [ ] **GitHub-native merge gate:** branch protection + required reviews + disable unrestricted pushes
 - [ ] **CI-green precondition** read live at merge time against the required-check set (never a passed-in boolean)
 - [ ] **Minimal Supervisor:** single-writer merge executor + `git pull --rebase` before any shared-layer write
-- [ ] **Episodic ledger** (`clock_events`) + clock-in/status hooks (server-stamped UTC; `(repo,branch,worktree)` key; inferred non-authoritative clock-out)
+- [ ] **Episodic ledger** (`clock_events`) — three axes: clock (deterministic server-side clock-in on first authed call) / heartbeat / check; server-stamped UTC; `(repo,branch,worktree[,scope])` key; agent-driven + PR-corroborated clock-out (D-04)
+- [ ] **Resource claims + assignment gate** (`resource_claims`): advisory presence + scope-aware dispatch (Supervisor); collaboration = opt-in co-claim; stale-claim expiry
+- [ ] **Digital-footprint views** (`footprint_worker|fleet|space`) for the HUD team calendar
 - [ ] Run-input capture convention (for later replay)
 - [ ] ≥1h reconciling heartbeat sweep (self-heals dropped webhook events); loop-back iteration cap with human escalation
 - [ ] Stand up Planner / Implementer / Reviewer routines + paste-ready prompts (`docs/routines/`)

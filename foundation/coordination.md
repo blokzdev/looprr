@@ -18,6 +18,24 @@ channel — opaque nudge text, never parsed as a command.
 - **`routine_runs`** (inherited, Knovo migration 0010) correlates each dispatch to a Claude session
   deep link, so the HUD can "open the session" behind any ledger row.
 
+## Spatial coordination — presence + the assignment gate (the moat above git)
+Git's isolation is **branch-level** (the no-race boundary for *merge*); it has **no file-grained
+"someone is working here" awareness** for async agents. LoopRR adds that plane on top of the ledger
+(full design + schema: `memory-and-ledger.md` → "Resource claims"; grounding: `research-grounding.md`):
+- **Presence (advisory).** Before editing, a worker `check_out`s a scope (file/glob/dir/module/ticket);
+  the API records a `resource_claim` and **returns conflicts**. On done it `check_in`s (or claims
+  release implicitly on `clock_out`). Stale claims (no heartbeat) auto-expire.
+- **The assignment gate (deterministic enforcement).** The real enforcement is **not** trusting
+  workers to honor an advisory lock — it's that the **Supervisor/queue never dispatches a ticket whose
+  scope overlaps an `active` claim** (scope-aware round-robin). Determinism lives in *assignment*, in
+  the API — the same boundary-not-prompt pattern as the merge gate (SemaClaw's PermissionBridge).
+- **Collaboration is opt-in.** A directive may permit a *co-claim* on a held scope; the gate then
+  allows the overlap. "Unless intentionally coordinating" is a first-class case.
+- **Git is the safety net.** A missed collision is at worst a *merge conflict the Reviewer/Supervisor
+  resolves* on separate branches — never a corrupted `main`. So this plane is an **optimization to
+  avoid wasted work + conflicts**, not a correctness mechanism — marketed as *coordinated awareness*,
+  not distributed locking (no overselling, inv. 5).
+
 ## The merge gate (the product's "publish") — GitHub-native (D-03)
 - **Enforced** by GitHub branch protection + required reviews on protected branches; routines can push
   `claude/*` only ("allow unrestricted pushes" disabled).
