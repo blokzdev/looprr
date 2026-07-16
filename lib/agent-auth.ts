@@ -12,9 +12,11 @@ export type Verb =
   // shared
   | "ledger" // write clock/heartbeat/check events (all roles)
   | "comment"
+  | "pull_queue" // pull the work queue on session start (all roles; DECISIONS #4 / D-09)
   // planner
   | "dedup"
   | "create_ticket"
+  | "update_ticket"
   // implementer
   | "claim"
   | "push_commit"
@@ -33,12 +35,21 @@ export type Verb =
   | "deploy";
 
 const VERBS: Record<AgentId, ReadonlySet<Verb>> = {
-  // Planner: pull the queue, ground & draft tickets. No code, no merge. Lowest trust → smallest set.
-  planner: new Set<Verb>(["ledger", "comment", "dedup", "create_ticket"]),
+  // Planner: pull the queue, ground & draft/refine tickets. No code, no merge. Lowest trust →
+  // smallest set (still smallest even with the ticket-doc verbs — none touch code or merge).
+  planner: new Set<Verb>([
+    "ledger",
+    "comment",
+    "pull_queue",
+    "dedup",
+    "create_ticket",
+    "update_ticket",
+  ]),
   // Implementer: claim a ticket, push to its own claude/* branch, open a PR, move status. No merge.
   implementer: new Set<Verb>([
     "ledger",
     "comment",
+    "pull_queue",
     "claim",
     "push_commit",
     "open_pr",
@@ -48,6 +59,7 @@ const VERBS: Record<AgentId, ReadonlySet<Verb>> = {
   reviewer: new Set<Verb>([
     "ledger",
     "comment",
+    "pull_queue",
     "review_targets",
     "run_tests",
     "read_ci",
@@ -60,6 +72,7 @@ const VERBS: Record<AgentId, ReadonlySet<Verb>> = {
   supervisor: new Set<Verb>([
     "ledger",
     "comment",
+    "pull_queue",
     "sequence",
     "reconcile_harness",
     "request_review",

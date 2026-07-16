@@ -5,9 +5,10 @@ in-progress · `[x]` done (green build gate) · `[!]` blocked (see HUMAN.md). **
 green build gate.** Never cross an unmet CHECKPOINT. Sequencing rule: **never let the moat-engine,
 replay, the storefront, or multi-tenancy precede a loop that has closed at least once.**
 
-> Status: **Phase 0 complete; P1 in progress.** Gate passed 2026-06-27 — the Co-Founder ratified
-> D-01…D-09 and greenlit P1 (`HUMAN.md`). Per the session branch directive, Phase 0 + P1 land on the
-> single branch `claude/looprr-phase-0-setup-uh6h9h` (HUMAN.md C-04).
+> Status: **Phase 0 complete + merged (PR #1 → main); P1 in progress.** Gate passed 2026-06-27 — the
+> Co-Founder ratified D-01…D-09 and greenlit P1 (`HUMAN.md`). Phase 0 + P1.1 merged to `main` on
+> 2026-07-16; per the loop, each subphase now gets its own branch/PR. **P1.2 done (2026-07-16)** on
+> branch `claude/looprr-phase-1-continue-mcvfik`.
 
 ---
 
@@ -30,13 +31,15 @@ Port-selective from Knovo; one subphase per slice; build gate green before each 
   - [x] Port the auth test; prove cross-role denials (planner ∌ `push_commit`/`merge`; reviewer ∌ `merge`/`push_commit`)
   - [x] Minimal CI workflow (typecheck + test) so the PR gates green
   - [x] **gate:** typecheck + test green
-- **P1.2 — Provision DBs + ticket model + governed API skeleton**
-  - [ ] **Provision `looprr-dev` + `looprr-prod`** via the Supabase MCP (Blokz Team, us-east-1, $0/mo — `memory/facts/0006`). Dev flows freely; prod is human-gated.
-  - [ ] Initial migration → `supabase/migrations/0001_init.sql`: `tickets` + `upstream_refs` (`kind ∈ client_request|spec|issue|design_doc|parent_ticket`, dedup `UNIQUE(kind,uid)`) + `directives` + `revisions` + `audit_log` + `routine_runs`. Apply live via `apply_migration` to dev; `generate_typescript_types` → `lib/database.types.ts`.
-  - [ ] Port the governed write helpers (validate-shape / transition / audit / revisions / soft-delete) → `/api/agent/*`; port the directive-as-data queue verbatim
-- **P1.3 — RLS + harden the unrun spine**
-  - [ ] RLS default-deny on every table; agent governance enforced in the API (service-role), not RLS; run `get_advisors(security)` and close findings
-  - [ ] `.env.example` lockstep; CI already gates typecheck+test (added in P1.1)
+- **P1.2 — Provision DBs + ticket model + governed API skeleton** ✓ (gate green: typecheck + 28 tests; live DB-layer verified on `looprr-dev`; advisors clean)
+  - [x] **Provision `looprr-dev` (`ihqjffqwmzxweqeidybi`) + `looprr-prod` (`dwniuzjlvhgjczlqpeud`)** via the Supabase MCP (Blokz Team, us-east-1, $0/mo — `memory/facts/0007`). Dev flows freely; prod human-gated (applied at merge per the Co-Founder's standing OK). *(Free-tier caps 2 active projects → `knovo-prod` paused with the Co-Founder's authorization; `memory/facts/0007`.)*
+  - [x] Initial migration → `supabase/migrations/0001_init.sql`: `tickets` + `upstream_refs` (dedup `UNIQUE(kind,uid)`) + `ticket_upstream_refs` + `directives` + `revisions` + `audit_log` + `routine_runs` + dedup views. Applied live to dev; `generate_typescript_types` → `lib/database.types.ts`; `get_advisors(security)` clean (only expected `rls_enabled_no_policy` INFO). Baked in Knovo's operational lessons (service_role grants, `search_path` hardening, RLS-enabled default-deny).
+  - [x] Ported the governed write helpers (validate-shape / transition / audit / revisions / soft-delete) → `lib/agent-api.ts` + `/api/agent/*` routes (create/update/soft-delete/status/claim/dedup/queue/directive-resolve); ticket-doc zod schema `lib/ticket-schema.ts` (shape-only, versioned). Added verbs `pull_queue` (all roles) + `update_ticket` (planner).
+  - [x] **gate:** typecheck + 28 unit tests green; live DB-layer replay on dev (create→revision→audit, dedup views, queue join, `UNIQUE(kind,uid)`, soft-delete filter, rejected-feeds-dedup, `updated_at` trigger); self-skipping E2E route harness committed (`test/integration/`, runs once the service-role key is in env).
+- **P1.3 — RLS policies + harden the unrun spine**
+  - [x] RLS **enabled** default-deny on every table (baked into `0001`); agent governance enforced in the API (service-role); `get_advisors(security)` clean. *(Baseline done in P1.2.)*
+  - [ ] Author the browser/admin RLS **policies** (when the HUD/auth lands) + full advisors closure; add a **live** cross-role denial test (complements the unit test; VERIFICATION.md)
+  - [ ] `.env.example` lockstep (no new vars in P1.2); CI already gates typecheck+test (added in P1.1)
 - [ ] **CHECKPOINT G1:** CI green; a ticket can be created/transitioned by a verb-scoped token through the governed API; cross-role denials proven by test; audit+revision rows on every mutation; `.env.example` lockstep
 > *(Numbering note: G1 here is the merged "repoint" checkpoint; the loop-closing checkpoint is G2 below.)*
 

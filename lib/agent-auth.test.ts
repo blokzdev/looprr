@@ -11,17 +11,19 @@ const TOKENS: Record<AgentId, string> = {
 
 // The verb scope each agent is granted (mirrors VERBS in agent-auth.ts).
 const EXPECTED_VERBS: Record<AgentId, Verb[]> = {
-  planner: ["ledger", "comment", "dedup", "create_ticket"],
-  implementer: ["ledger", "comment", "claim", "push_commit", "open_pr", "transition_status"],
-  reviewer: ["ledger", "comment", "review_targets", "run_tests", "read_ci", "flag", "transition_status"],
-  supervisor: ["ledger", "comment", "sequence", "reconcile_harness", "request_review", "merge", "deploy"],
+  planner: ["ledger", "comment", "pull_queue", "dedup", "create_ticket", "update_ticket"],
+  implementer: ["ledger", "comment", "pull_queue", "claim", "push_commit", "open_pr", "transition_status"],
+  reviewer: ["ledger", "comment", "pull_queue", "review_targets", "run_tests", "read_ci", "flag", "transition_status"],
+  supervisor: ["ledger", "comment", "pull_queue", "sequence", "reconcile_harness", "request_review", "merge", "deploy"],
 };
 
 const ALL_VERBS: Verb[] = [
   "ledger",
   "comment",
+  "pull_queue",
   "dedup",
   "create_ticket",
+  "update_ticket",
   "claim",
   "push_commit",
   "open_pr",
@@ -83,6 +85,18 @@ describe("authenticateAgent", () => {
     expect(reviewer.can("merge")).toBe(false);
     expect(reviewer.can("push_commit")).toBe(false);
     expect(reviewer.can("create_ticket")).toBe(false);
+    // update_ticket (edit the spec) is the Planner's alone — no other role may rewrite a ticket doc.
+    expect(planner.can("update_ticket")).toBe(true);
+    expect(implementer.can("update_ticket")).toBe(false);
+    expect(reviewer.can("update_ticket")).toBe(false);
+  });
+
+  // Pull-on-session-start is universal (DECISIONS #4 / D-09): every role pulls its work queue.
+  it("grants pull_queue to every role", () => {
+    for (const id of ["planner", "implementer", "reviewer", "supervisor"] as AgentId[]) {
+      const supervisor = authenticateAgent(reqWith(`Bearer ${TOKENS[id]}`))!;
+      expect(supervisor.can("pull_queue")).toBe(true);
+    }
   });
 
   it("rejects a missing Authorization header", () => {
