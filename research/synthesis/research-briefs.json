@@ -1,0 +1,211 @@
+{
+ "memory": {
+  "summary": "LoopRR needs three things the literature already solves in pieces: durable cross-session/cross-repo shared memory, a temporal+spatial \"clock-in ledger,\" and deterministic Record-and-Replay. None of the five papers were built for a multi-agent software team across GitHub repos, but each contributes one load-bearing primitive. The opinionated synthesis: borrow MIRIX's typed-memory routing as the schema, but collapse its six human-centric types into four dev-centric ones (Core/persona, Procedural/playbooks, Semantic/codebase-and-decision facts, Episodic/event-ledger), and drop the Knowledge Vault into your existing secrets manager rather than reinventing it. Borrow MAGMA's dual-stream write path (fast synchronous append, async LLM consolidation) and its temporal+entity+causal edge model \u2014 but reject MAGMA's four-orthogonal-graph storage as over-engineered for v1; you do not need a causal graph engine to ship. Borrow GAM's JIT/deep-research insight wholesale: keep memory LIGHT and lossless-by-reference, never pre-compress away the raw artifact, because in software the ground truth (the commit, the diff, the CI log, the PR) already exists in a queryable store (git/GitHub) \u2014 this is GAM's \"page-store\" handed to you for free. Borrow Mem0's production discipline: ADD/UPDATE/DELETE/NOOP fact reconciliation, soft-delete-for-temporal-reasoning, and the hard latency numbers that justify \"don't put a synchronous graph build on the critical path.\" Borrow SemaClaw's harness architecture as the actual implementation spine: three-tier context (working/external/persona), plain-Markdown user-owned memory, hooks as the clock-in mechanism, and DAG Teams' two-phase plan-then-execute as the natural Record half of Record-and-Replay.\n\nThe storage decision is the highest-leverage call and the papers strongly bias it. Do NOT make a graph DB or a vector DB your system of record. Your system of record is Postgres + git/GitHub. The clock-in ledger is append-only event data with time, duration, and a virtual-location tag \u2014 that is a textbook Postgres table (timestamptz, tstzrange/duration, repo+env+branch+worktree as the spatial key, worker_id, status, event payload jsonb), optionally with TimescaleDB if event volume ever justifies it; it is emphatically NOT a vector problem and NOT a graph problem. MAGMA's own ablation shows the temporal backbone is an immutable ordered chain \u2014 in your world that chain IS the ledger and the git commit DAG. Put a pgvector index on the semantic/episodic text columns for hybrid retrieval (Mem0/SemaClaw both land on BM25+dense hybrid with keyword as a first-class signal, which matters enormously for code where identifiers must exact-match), and reserve any graph store for a later phase if cross-repo causal \"why did build X break\" queries become a real product need. Entity/causal relations can live as foreign keys and a `relations` join table in Postgres long before they need Neo4j.\n\nRecord-and-Replay is where you must be most careful and where the papers help least, because none of them do deterministic execution capture \u2014 they do memory, not replay. \"Replay\" in LoopRR should mean two distinct things kept separate: (1) Coordination replay \u2014 a structured, queryable transcript of what a routine did (the DAG plan it generated, tool calls, observations, diffs, decisions), which GAM's page-store + SemaClaw's session-export JSON + Mem0's structured facts give you, and which is genuinely useful for refining future work; and (2) Deterministic replay in the strict systems sense (same inputs \u2192 same outputs), which LLM nondeterminism makes impossible to guarantee and which you should NOT promise. Capture the inputs (prompt, injected memory snapshot, tool results, model+params, RNG seed where available, git SHAs) so a run is reconstructable and auditable, and let \"replay\" mean deterministic re-execution of the captured DAG plan (SemaClaw's deterministic scheduler running an LLM-authored graph) \u2014 not deterministic regeneration of the LLM's tokens. This is the honest, shippable version.\n\nTwo cross-cutting risks dominate. First, async consolidation correctness: MAGMA and Mem0 both lean on an LLM to infer causal/entity links and to resolve ADD/UPDATE/DELETE conflicts, and both papers flag that extraction errors propagate silently. In a software team this is worse than in chat \u2014 a wrong \"fact\" about which API is current, or a mis-consolidated decision, will be acted on by a worker that writes code. Gate consolidation behind conservative thresholds, keep raw provenance (the SHA/PR/log it came from) on every fact so any claim is verifiable, and prefer soft-delete + supersession over destructive UPDATE so the ledger stays auditable. Second, multi-tenant / multi-repo isolation (SemaClaw's explicit concern): shared memory across repos is a feature AND a leakage vector \u2014 scope every memory row by repo/org and namespace per-worker, and treat cross-repo reads as an explicit, permissioned join rather than a global pool, mirroring your existing governed-write-boundary instinct.",
+  "adopt": [
+   {
+    "idea": "Typed memory with a routing manager (six types: Core/Episodic/Semantic/Procedural/Resource/Vault), each with its own schema and update manager, plus a meta-router that decides which type(s) a new event touches.",
+    "source": "MIRIX",
+    "why": "Flat single-store memory retrieves poorly and can't separate 'what happened' (ledger) from 'how we do X' (playbook) from 'what is true about repo Y' (facts). MIRIX's routing gave the largest gains exactly on temporal and multi-hop \u2014 which map directly to 'when did worker X touch repo Y' and 'trace this bug across repos'.",
+    "how_in_looprr": "Collapse to FOUR dev-native types as the canonical schema: Core (per-worker persona + standing instructions, akin to CLAUDE.md/SOUL.md), Procedural (reusable playbooks: how-to-release, how-to-open-PR, how-to-handle-CI-failure), Semantic (durable facts about codebases, APIs, architecture decisions, owners), Episodic (the clock-in ledger itself). Map MIRIX 'Resource' to a pointer into git/GitHub (don't copy artifacts); map 'Knowledge Vault' to your existing secrets manager, NOT a memory table. A lightweight router (single LLM call) tags each incoming event with target type(s); store as a `memory_type` enum column, not separate databases."
+   },
+   {
+    "idea": "Dual-stream write path: a synchronous fast path that only appends the event and updates the immutable temporal backbone + vector index (no blocking LLM call), and an asynchronous slow path worker that dequeues recent events and does LLM consolidation (causal/entity linking, summarization).",
+    "source": "MAGMA (mirrored by Mem0's async summary and confirmed by Mem0's Zep critique)",
+    "why": "Keeps clock-in latency near-zero so a routine firing never waits on memory reasoning. MAGMA achieved lowest latency this way; Mem0 explicitly diagnosed Zep as impractical for real-time precisely because it put multi-LLM graph construction on the write path.",
+    "how_in_looprr": "Clock-in/status-post = synchronous INSERT into the ledger table + enqueue (e.g. Postgres LISTEN/NOTIFY, pg-boss, or a Supabase edge function trigger). A background consolidation worker batches recent ledger rows, extracts Semantic facts and cross-repo relations, and writes them back with provenance. Compaction/consolidation must never block the worker's critical path."
+   },
+   {
+    "idea": "JIT memory + lossless page-store + a 'researcher' that plans\u2192searches\u2192integrates\u2192reflects at query time, keeping stored memory light and treating the complete history as the searchable substrate.",
+    "source": "GAM",
+    "why": "GAM's central result: precompressed memory loses information; the win comes from keeping the full history retrievable and doing intensive retrieval at request time. In software this is a gift \u2014 the lossless 'page-store' already exists as git history, diffs, PRs, issues, and CI logs. You should NOT re-summarize these into lossy memory; you should index pointers and fetch on demand.",
+    "how_in_looprr": "Memory stores compact memos + stable references (repo, SHA, PR#, file:line, run-id). When a worker needs context, a 'researcher' step issues hybrid retrieval over memos, then dereferences to pull the exact diff/log/issue via the GitHub MCP tools (get_commit, get_file_contents, get_job_logs, pull_request_read) \u2014 this is GAM's page-fetch. Adopt GAM's three retrieval tools verbatim: vector, BM25/keyword, and direct-ID lookup (the ID case = fetch by SHA/PR#). Cap reflection depth (GAM default 3) to bound cost."
+   },
+   {
+    "idea": "LLM-driven fact reconciliation with explicit ADD/UPDATE/DELETE/NOOP operations against semantically-similar existing memories; mark contradicted facts invalid rather than physically deleting them to preserve temporal reasoning.",
+    "source": "Mem0",
+    "why": "Without dedup+conflict-resolution, the Semantic store accumulates stale/contradictory facts ('the deploy command is X' after it changed to Y). Soft-invalidation is what lets you answer 'what did we believe on date D' and audit decisions \u2014 critical for a PM-as-a-service product.",
+    "how_in_looprr": "On consolidation, retrieve top-k similar facts, let the LLM pick ADD/UPDATE/DELETE/NOOP. Implement DELETE as a `valid_until` timestamp + `superseded_by` FK, never a row drop. Every fact row carries provenance (source SHA/PR/run) so it's verifiable, not just asserted."
+   },
+   {
+    "idea": "Three-tier context architecture (working memory + compaction, external retrieval memory with 3-level degradation Vector+FTS\u2192FTS\u2192keyword-scan, persona partition) stored as plain user-owned Markdown files; hooks as runtime lifecycle clamp points; DAG Teams two-phase orchestration (LLM emits an explicit dependency graph, deterministic scheduler executes it).",
+    "source": "SemaClaw",
+    "why": "This is the closest paper to LoopRR's actual shape (Claude Code harness, multi-agent, cross-session). The hooks model is exactly the clock-in mechanism. The DAG-plan-then-deterministic-execute pattern is exactly the Record half of Record-and-Replay done honestly. The Markdown-over-opaque-DB stance aligns with your git-native, human-auditable product.",
+    "how_in_looprr": "(a) Clock-in = a SessionStart/task-start hook that writes a ledger row (worker, time, repo/env/branch/worktree = virtual location); status updates = tool-post hooks; clock-out = task-complete/error hook recording duration+outcome. (b) Persona tier = per-worker SOUL.md/CLAUDE.md committed to the repo. (c) External memory = Postgres+pgvector with SemaClaw's exact degradation fallback so retrieval still works when embeddings are down \u2014 index docs without stopword filtering, filter queries, to favor recall@index/precision@query. (d) Record-and-Replay: have the orchestrator emit an explicit DAG plan (inspectable, diffable, stored), then a deterministic scheduler replays THAT plan \u2014 gives failure-locality and reproducibility of coordination without pretending LLM tokens are deterministic."
+   },
+   {
+    "idea": "Per-worker, append-only episodic ledger with event_type/summary/details/actor/timestamp fields, used as a structured calendar the agent can reason over.",
+    "source": "MIRIX (Episodic Memory) + MAGMA (immutable temporal backbone)",
+    "why": "This is literally the requested calendar/ledger. MIRIX's episodic field set is a ready-made schema; MAGMA's insight that the temporal chain must be immutable/ordered is what makes 'who was where when' trustworthy.",
+    "how_in_looprr": "Postgres table: id, worker_id, event_type (clock_in|status|clock_out|blocked|handoff), summary, details jsonb, actor, repo, env, branch, worktree, started_at timestamptz, duration interval, ref (SHA/PR/run-id). This single table gives every worker and the human temporal+spatial awareness via plain SQL/views; surface it as a 'team calendar' read model and feed it into worker context on session start."
+   }
+  ],
+  "reject": [
+   {
+    "idea": "MAGMA's four separate orthogonal graph stores (semantic/temporal/causal/entity) with policy-guided beam-search traversal as the v1 retrieval substrate.",
+    "why_not": "Over-engineered for launch and the wrong cost/benefit for software. MAGMA's own ablation shows causal and temporal carry most of the value while entity-only scores worst; and in LoopRR the temporal 'graph' is just the ledger/commit-DAG and entity links are FKs. Standing up four graph views + an LLM causal-inference consolidator is a large eng+latency cost (and MAGMA lists storage/complexity as an explicit limitation). Start with Postgres relations; promote to a graph DB only if cross-repo causal queries become a proven product need."
+   },
+   {
+    "idea": "MIRIX's Knowledge Vault as a memory component for secrets/credentials/API keys.",
+    "why_not": "Storing credentials in the memory system violates least-privilege and creates a leak surface. Secrets belong in your existing secrets manager / env, referenced by handle. Keep them out of the memory substrate entirely."
+   },
+   {
+    "idea": "MIRIX's multimodal screenshot pipeline and the 'Agent Memory Marketplace' (tokenized/decentralized memory trading).",
+    "why_not": "Zero relevance to a code-team product and a distraction. LoopRR's modalities are text/code/logs/diffs, all already structured. The marketplace vision is speculative and orthogonal."
+   },
+   {
+    "idea": "Promising deterministic, bit-for-bit replay of agent runs ('the RR' as true record-and-replay of execution).",
+    "why_not": "LLM outputs are nondeterministic across model/version/sampling, and tool environments (CI, network, GitHub state) drift. No paper here delivers deterministic LLM replay. Promising it sets a guarantee you can't keep. Scope 'replay' to (a) reconstructable/auditable runs via captured inputs+SHAs and (b) deterministic re-execution of the captured DAG plan."
+   },
+   {
+    "idea": "Zep-style cache-a-full-summary-at-every-node temporal knowledge graph.",
+    "why_not": "Mem0 measured this at >600k tokens/conversation with hours-long async build and stale immediate reads. For a system that must give workers fresh shared state quickly, that footprint and latency are disqualifying. The lighter memo+reference model (GAM/Mem0) is strictly better here."
+   },
+   {
+    "idea": "Pre-compressing artifacts (diffs, logs, PR bodies) into lossy natural-language memory at ingestion time (the AOT pattern).",
+    "why_not": "GAM's experiments show AOT compression causes irrecoverable information loss, and software ground-truth is exactly the kind of fine-grained detail (exact error line, exact arg) that lossy summaries destroy. Keep raw artifacts by reference in git/GitHub; summarize only as a retrieval index, never as the system of record."
+   }
+  ],
+  "risks": [
+   "Async consolidation can write wrong/hallucinated facts (MAGMA and MAGMA's limitations + Mem0 both flag LLM extraction error propagation). In a code team a bad fact gets acted on and written into source. Mitigate: conservative thresholds, mandatory provenance (SHA/PR/run) on every fact, soft-delete/supersession, and a human-visible 'facts pending review' surface for high-impact claims.",
+   "Cross-repo shared memory is also a data-leakage / blast-radius vector (SemaClaw's multi-tenant isolation concern). A worker on repo A must not silently read private context from repo B. Mitigate: namespace every memory row by org/repo, make cross-repo reads explicit+permissioned joins, never a global pool.",
+   "Latency creep if any consolidation/graph step sneaks onto the clock-in critical path (the exact failure Mem0 attributes to Zep). Mitigate: enforce that the fast path is INSERT+enqueue only; everything else is background.",
+   "Compaction corrupts working state silently (SemaClaw: compaction errors are silent, compound, unrecoverable; their own prompt is code-biased but still imperfect). Mitigate: keep the lossless reference store so any compaction can be re-derived; re-inject standing constraints (CLAUDE.md/persona, open todos) across every compaction boundary.",
+   "Clock/timezone and duration integrity in the ledger: workers across repos/CI runners may report skewed clocks. Mitigate: server-stamp timestamps at the write boundary (don't trust worker-supplied time), store timestamptz in UTC, derive duration from server-side start/end events.",
+   "Ledger and memory write amplification at scale: every tool call posting a status row can explode volume. Mitigate: coalesce status events, sample, and consider TimescaleDB/partitioning only when volume proves it \u2014 don't pre-optimize.",
+   "Vector index staleness right after a write (SemaClaw's 'mark day-log dirty on compaction' problem): a worker may not find what another just wrote. Mitigate: trigger incremental re-index on write, and always include a keyword/FTS fallback path so fresh exact-match content is findable before embeddings catch up.",
+   "'Replay' semantics confusion between stakeholders: engineers may expect deterministic re-execution. Mitigate: name the two modes explicitly in the product (Audit/Reconstruct vs Plan-Replay) and document the non-guarantee."
+  ],
+  "open_questions": [
+   "What exactly is the 'virtual-location' tag's cardinality \u2014 is it (repo, env) or finer (repo, branch, worktree, CI-run)? This determines the ledger's spatial key and whether worktree-level concurrency (multiple workers in one repo) needs first-class modeling.",
+   "Is cross-repo causal reasoning ('this PR in repo A broke CI in repo B') an actual near-term product requirement? If yes, it justifies a graph store sooner; if no, defer per the reject list.",
+   "Should the canonical memory live in Postgres (queryable, indexed) or as git-committed Markdown (user-owned, diffable, SemaClaw-style) \u2014 or both with one as source of record and the other as a projection? The product's git-native ethos pulls toward Markdown, but cross-repo shared retrieval pulls toward Postgres.",
+   "What is the consolidation cadence and trigger \u2014 per-event, per-session-end, or scheduled? Affects freshness of shared facts vs cost.",
+   "For Record-and-Replay, which inputs are actually capturable in the Claude Code routine harness (model id, params, RNG seed, injected-memory snapshot, tool results)? Need to confirm what the harness exposes before promising reconstructability.",
+   "How does the memory/ledger write boundary relate to the existing governed-write-API pattern in your other product instincts \u2014 should all memory writes go through one audited service boundary with per-worker verb-scoped tokens?",
+   "Retention/GC policy: SemaClaw uses 50-day FIFO daily logs. What's LoopRR's retention for ledger vs facts vs raw artifact pointers, given audit/compliance needs of a PM-as-a-service?",
+   "Do workers need a shared real-time view (push/subscribe) of the ledger for live coordination, or is pull-on-session-start sufficient? Pushes toward LISTEN/NOTIFY or a websocket layer if real-time."
+  ]
+ },
+ "knovo_reuse": {
+  "summary": "Knovo is a single-tenant \"AI-authored explainer library\" whose real, transferable value is not its molecular-science content but its governance architecture: a governed write API as the single boundary, verb-scoped per-worker bearer tokens, a human-directed publish gate, audit_log + revisions + soft-delete, and an admin \"control HUD\" where a human steers autonomous Claude routine workers via status markers + natural-language directives. That governance spine \u2014 designed precisely so a prompt-injected or compromised autonomous worker can only do recoverable, audited, bounded actions \u2014 maps almost 1:1 onto LoopRR, a multi-tenant PM-as-a-Service running an autonomous Claude dev team. The cleanest reuse path: keep the entire governed-API + token-scoping + audit/revision/soft-delete + transition-gate + control-HUD pattern as-is (re-targeting the verbs and the \"artifact\" entity), and rebuild only the domain layer \u2014 what an artifact IS, what a \"source\" IS, and the renderer.\n\nWhat TRANSFERS as-is is the set of architectural invariants: the governed API as sole write boundary (lib/worker-auth.ts, lib/worker-api.ts, app/api/worker/*), verb-scoped tokens (the WorkerId\u2192Verb map), the human-directed publish/merge gate (publishAuthorized/editLiveAuthorized in lib/worker-api.ts), audit_log/revisions/soft-delete, the admin control-HUD with directives-as-two-axes (action \u00d7 publish_after) and run/session correlation (docs/admin-hud.md, routine_runs migration 0010), and the worker-harness repo design (foundation/worker-harness.md) \u2014 which is genuinely a stronger fit for a dev team coordinating through a shared git repo + Supervisor than it ever was for Knovo. The multi-tenant GemBlog north star (data-model.md \"Multi-tenant data model\", monetization.md) is already drawn and becomes LoopRR's actual day-one product rather than a deferred dream.\n\nWhat REPURPOSES: the editorial team Scout/Editor/Keeper/Supervisor maps to a dev team (Scout\u2192Planner/Triager, Editor\u2192Implementer, Keeper\u2192QA/Maintainer, Supervisor\u2192Tech-Lead \u2014 and the Supervisor goes from deferred/design-only to a first-class shipped role). The blog/forum + reader_comments system repurposes from a public reader audience into either a client-facing project portal or a private inter-agent work-log/forum. The slot-schema + single renderer repurposes from a molecular-explainer renderer into a lightweight structured status/work-item view \u2014 or is largely dropped in favor of GitHub/Markdown as the render surface. Source-grounding repurposes from PDB/ChEMBL/PubMed provenance into requirement\u2192ticket\u2192PR traceability; the contract (\"every artifact traces to a verifiable upstream identifier, deduped on a stable key\") survives even though the registry is entirely different.\n\nWhat DROPS: the molecular domain kit (molecular3d stage, 3Dmol.js, the PDB selection grammar in lib/renderer/selection.ts), the science connectors (bioRxiv/ChEMBL/PubMed MCP), and the narrow-niche invariant (Decision 1), which is actively wrong for a horizontal dev tool. The riskiest baked-in assumptions that DON'T hold for a dev team: (1) workers never write to the repo \u2014 the whole point of a dev team is to write code/open PRs, inverting Knovo's \"repo is read-only context, DB is truth\"; (2) the unit of work is a single self-contained author-once artifact, whereas dev work is multi-step, stateful, dependency-laden, and collaborative across agents on the same files; (3) zod-validate-before-store is a clean gate for a JSON document but code correctness can't be schema-validated \u2014 the real gate is CI/tests/review, which is probabilistic, not a 422; (4) single-tenant with no discriminator anywhere; and (5) \"one human admin reviews everything\" doesn't scale to multi-tenant clients each steering their own dev team.",
+  "adopt": [
+   {
+    "idea": "Governed API as the single write boundary; the service-role key used ONLY server-side inside that API, never by a worker, browser, or connector.",
+    "source": "foundation/technical-architecture.md (The governed Knovo API); foundation/security-and-privacy.md; lib/supabase/admin.ts; app/api/worker/* route handlers",
+    "why": "TRANSFERS AS-IS. Knovo's single most valuable idea and fully domain-agnostic. The rationale (routine sessions ingest untrusted text and run connectors with no per-action prompt, so safety can't live in the prompt) is even MORE true for a dev team that executes code and merges PRs. A prompt-injected coding agent with direct DB/repo admin is catastrophic; behind a governed API it can only do bounded, audited, recoverable verbs.",
+    "how_in_looprr": "Keep the api.knovo.ai -> /api/worker/* pattern (rename to /api/agent/*). These handlers become the only path by which agents create tickets, push work-item state, open/transition PRs, comment. Agents never hold Supabase or GitHub-admin creds; the API holds them server-side and exposes verb-scoped actions."
+   },
+   {
+    "idea": "Per-worker, verb-scoped bearer tokens enforced in the API (a WorkerId->Set<Verb> map), not in the prompt or a shared DB role.",
+    "source": "lib/worker-auth.ts (VERBS: scout=dedup/create; editor=+update/status/resolve/series/flag; keeper=targets/update/status/flag)",
+    "why": "TRANSFERS AS-IS (re-target the verbs). Least-privilege per role fits a dev team exactly: a Planner shouldn't merge; a QA agent shouldn't open features; only a Tech-Lead role gets the merge verb. A leaked token can only do that role's verbs.",
+    "how_in_looprr": "Redefine WorkerId as dev roles and Verb as dev actions (plan, create_ticket, claim, push_commit, open_pr, comment, transition_status, request_review, merge, deploy). Planner: plan/create_ticket; Implementer: claim/push_commit/open_pr/comment; QA: run_tests/flag/comment; Tech-Lead/Supervisor: review/merge/deploy. merge/deploy are the new 'publish' verbs, gated behind a human directive."
+   },
+   {
+    "idea": "Human-directed publish gate enforced in the API: a worker may go public only when admin-approved OR an open directive is flagged publish_after; editing/archiving live content also requires a matching open directive.",
+    "source": "foundation/content-integrity.md (The publish gate); lib/worker-api.ts (publishAuthorized, editLiveAuthorized, archiveLiveAuthorized, WORKER_TARGETS)",
+    "why": "REPURPOSES. The mechanism \u2014 irreversible/high-impact actions require an explicit human directive expressed as DATA, not trust in the agent \u2014 is exactly what should gate merge-to-main / deploy-to-prod. 'Nothing reaches the public except via the gate' becomes 'nothing reaches main/prod except via the gate.'",
+    "how_in_looprr": "Map status=published -> PR merged / deployed. Keep the two-axis directive (action x merge_after). A client/PM approves a PR (approved) or files a directive 'implement X and merge when green' (merge_after:true). The API lets the merge verb fire only when approved OR an open merge_after directive exists AND CI is green (add a CI-green precondition)."
+   },
+   {
+    "idea": "audit_log + revisions (snapshot-before-write) + soft-delete (deleted_at), written by the API on every mutation; actor is always worker:<id> or admin:<uid>.",
+    "source": "foundation/data-model.md (audit_log, revisions, deleted_at); lib/worker-api.ts (audit, snapshotRevision); supabase/migrations/0004_editorial_workflow.sql",
+    "why": "TRANSFERS AS-IS. Full provenance + recoverability for an autonomous actor is non-negotiable for a paid dev-team product where clients need who/what/when and rollback. Soft-delete (no hard delete from a worker) directly bounds blast radius.",
+    "how_in_looprr": "Keep verbatim. Every agent action audits with actor=agent:<role>; revisions snapshots prior ticket/spec/plan state; soft-delete tickets/comments. This doubles as the client-facing activity feed."
+   },
+   {
+    "idea": "Admin control-HUD: a human directs autonomous work via status markers + natural-language directive comments (action x publish_after), with run/session correlation (dispatch a worker, capture the Claude session id + deep link), an activity feed, and inline revision diff/restore.",
+    "source": "docs/admin-hud.md; foundation/agent-architecture.md (the dashboard is a control HUD); routine_runs (migration 0010); lib/admin/* (queue, activity, insights, worker-state)",
+    "why": "TRANSFERS AS-IS conceptually and is the single best UX fit. 'A human steers an autonomous team with status markers + plain-language comments, sees a run-grouped feed, opens the agent's session' IS the PM-as-a-Service dashboard. The directive-as-data queue the worker pulls is exactly how a PM assigns work.",
+    "how_in_looprr": "The HUD becomes the per-tenant PM dashboard. Status markers -> ticket/PR states; directives -> work assignments; the queue endpoint (app/api/worker/queue) -> the agent's task inbox; RunGroup 'Open session' -> watch the agent work live. One HUD per client tenant."
+   },
+   {
+    "idea": "Worker-harness repo design: a dedicated git repo with a shared constitution (AGENTS.md) + per-worker subfolders with append-only notes/, a CALENDAR.md backlog, 'read anywhere / write only your own subfolder' to avoid write races, and a single-writer Supervisor that reconciles notes via git pull --rebase, triggered by GitHub push events.",
+    "source": "foundation/worker-harness.md (sections 2-5)",
+    "why": "REPURPOSES and is a BETTER fit for LoopRR than Knovo. Knovo treats the repo as read-only memory; a dev team's natural medium IS the repo. The constitution + scoped-writes + Supervisor-reconciliation pattern solves multi-agent coordination on shared code, and GitHub push -> wake Supervisor is the native event loop of a dev team.",
+    "how_in_looprr": "Per project: a harness carrying the team constitution (coding standards, architecture, definition-of-done), per-agent playbooks + memory, and a CALENDAR.md sprint backlog the Tech-Lead owns. But LIFT the 'repo != product repo' rule \u2014 LoopRR agents DO write product code \u2014 and adapt 'write only your own subfolder' into 'write only your own feature branch,' using PRs (not paths) as the no-race boundary, with the Tech-Lead reconciling via merge."
+   },
+   {
+    "idea": "The editorial team archetype Scout/Editor/Keeper/Supervisor as differentiated, trust-sized, least-privilege roles (Scout lowest trust because it reads untrusted external text -> smallest verb set; Supervisor coordinates but writes no content).",
+    "source": "foundation/agent-architecture.md (The workers); foundation/worker-harness.md section 5 (Supervisor)",
+    "why": "REPURPOSES into a dev team. Specialized roles, trust-sized privileges, and one coordinator that writes the shared layer but cannot touch content is the skeleton of an autonomous dev team.",
+    "how_in_looprr": "Scout->Planner/Triager (drafts tickets from requests; lowest trust, smallest verbs). Editor->Implementer (claims tickets, writes code, opens PRs; largest write verb set). Keeper->QA/Maintainer (sweeps for test failures, dependency drift, security advisories; flags rather than silently editing main). Supervisor->Tech-Lead (sequences work, reconciles the harness, holds the gated merge/deploy verbs). Promote the Supervisor from deferred/design-only (its Knovo status) to a shipped, central role."
+   },
+   {
+    "idea": "Multi-tenant north star: tenants table, tenant_id discriminator on every content table, RLS rewrites (is_admin -> is_tenant_admin(tenant_id)) as the audit-before-launch security piece, per-tenant worker tokens resolved by the API, usage_tracking quotas enforced at the API write boundary, custom domains via middleware host-routing.",
+    "source": "foundation/data-model.md (Multi-tenant data model); foundation/monetization.md (freemium tiers, quota mechanism, custom domains via middleware.ts)",
+    "why": "TRANSFERS AS-IS as the actual product spec. Knovo recorded multi-tenancy as deferred vision; for LoopRR it is core on day one, and the design is already done \u2014 where tenant_id goes, that RLS isolation is THE critical risk, that quotas piggyback on the single write boundary, that middleware host-routing already exists for api.knovo.ai.",
+    "how_in_looprr": "Adopt tenants + tenant_id across tickets/PRs/audit/comments verbatim. Per-tenant agent tokens keyed by (tenant_id, role) with a unique index on (tenant_id, token); the API resolves a token to its tenant and rejects cross-tenant actions. usage_tracking meters agent-runs/PRs per plan, returning 429. Build the TenantA-cannot-touch-TenantB isolation test FIRST."
+   },
+   {
+    "idea": "Source-grounding contract: every artifact traces to >=1 stable, verifiable upstream identifier stored as provenance, deduped on a unique (source_db, source_uid) key; 'no source -> no draft'; rejected sources never re-drafted.",
+    "source": "foundation/content-integrity.md (sections 1, 4); foundation/data-model.md (sources, seen_source_keys, rejected_source_keys); supabase/migrations/0001_init.sql",
+    "why": "REPURPOSES. The CONTRACT (traceability + dedup as a data property, not agent memory) survives even though the registry differs entirely. For a dev team this becomes requirement/ticket traceability: every PR traces to a ticket; every ticket to a client request/spec; dedup stops two agents drafting the same ticket from the same request.",
+    "how_in_looprr": "sources -> upstream_refs (kind in client_request|spec|issue|design_doc|parent_ticket; uid = a stable id/URL). Keep UNIQUE(kind, uid) and the seen/rejected views so a request isn't duplicated into tickets and a rejected/won't-do request isn't re-opened. The provenance footer becomes 'this PR implements ticket T from request R.'"
+   }
+  ],
+  "reject": [
+   {
+    "idea": "The molecular domain kit: molecular3d stage, 3Dmol.js rendering, the PDB highlight-selection grammar, and the science-explainer chart/diagram stages.",
+    "why_not": "DROPPED. lib/renderer/selection.ts (PDB selection language), the molecular3d branch of the stage union, and the explainer visual stages have zero meaning for a dev team. artifact-schema.md itself names these as the three 'molecular seams to factor out.' LoopRR artifacts are tickets/PRs/specs, not interactive molecular structures."
+   },
+   {
+    "idea": "The science source connectors (bioRxiv / ChEMBL / PubMed MCP) and the PDB/RCSB REST allowlist.",
+    "why_not": "DROPPED. agent-architecture.md 'Connectors (per worker)' is entirely science-API specific. LoopRR agents need GitHub, CI, Slack/Linear/Jira, and the codebase \u2014 a different connector set. Only the per-worker-connector-allowlist PATTERN survives; the specific connectors go."
+   },
+   {
+    "idea": "The narrow-niche invariant (Decision 1 / CLAUDE.md invariant #5): structural/molecular biology only, 'not broad biomedical.'",
+    "why_not": "DROPPED and inverted. A horizontal PM-as-a-Service running dev teams for arbitrary client codebases is the OPPOSITE of a single bounded niche. Knovo's own docs flag that pulling multi-tenancy means amending Decision 1 to 'per-tenant niche'; for LoopRR the niche is per-project, not a global wall. A global niche would defeat the product."
+   },
+   {
+    "idea": "zod-validate-before-store as the SUFFICIENT correctness gate (malformed output rejected at the boundary with 422; the review queue holds only renderable conformant candidates).",
+    "why_not": "PARTIALLY DROPPED / REPLACED. A JSON slot document is fully schema-validatable; code is not. zod can confirm a ticket's SHAPE but not that a PR is correct, safe, or non-regressive. LoopRR's real gate is CI + tests + review (+ optionally a reviewing agent) \u2014 a probabilistic multi-signal gate, not a binary parse. Reuse zod for structured metadata (ticket fields, PR descriptors); never treat 'passed validation' as 'safe to merge.'"
+   },
+   {
+    "idea": "The single-renderer-owns-all-layout slot schema as the central artifact model (stage/panels/controls/captions rendered by one responsive renderer in three layout modes).",
+    "why_not": "MOSTLY DROPPED. The slot schema existed so an AI could safely author a RENDERED interactive document without emitting layout code. LoopRR's deliverable is code in a repo, rendered by GitHub/the IDE/the running app \u2014 there is no bespoke explainer renderer to protect. Keep the versioning + migrate-on-read DISCIPLINE for the ticket/work-item schema; drop the molecular-grade renderer apparatus (the universal-core panels could survive only as a thin client-portal status view)."
+   }
+  ],
+  "risks": [
+   "PROMPT-INJECTION / EXECUTION BLAST RADIUS IS LARGER AND LIVE. Knovo bounds a worker that reads untrusted papers but only WRITES validated JSON behind the API. A LoopRR agent reads untrusted issue text / client requests / third-party dependencies AND executes code AND opens PRs that run in CI \u2014 so injection can mean code execution, supply-chain compromise, or secret exfiltration via CI. The governed-API boundary helps but is insufficient; LoopRR additionally needs sandboxed execution, per-tenant CI secret scoping, and egress controls the Knovo threat model never required.",
+   "RLS TENANT ISOLATION IS THE TOP SECURITY RISK AND IS UNBUILT. data-model.md flags that a single missed tenant predicate leaks cross-tenant data; today there is NO tenant discriminator anywhere (0001-0011 are single-tenant). For a B2B product hosting multiple clients' proprietary codebases, a cross-tenant leak is existential. The is_tenant_admin(tenant_id) rewrite + a TenantA-cannot-read-TenantB test must precede any onboarding.",
+   "THE 'WORKERS NEVER WRITE THE REPO; DB IS TRUTH' INVARIANT INVERTS. Knovo's clean separation (content truth in Postgres via the API; repo is read-only memory) is the architecture's backbone, but a dev team's deliverable IS repo writes. LoopRR must split truth across two stores (DB for tickets/audit/state; git for code) and govern git writes (branch protection, required reviews, the merge verb) the way Knovo governs DB writes \u2014 a non-trivial second governed boundary that doesn't exist today.",
+   "UNIT-OF-WORK MISMATCH. Knovo's artifact is author-once, self-contained, and validatable as a whole; dev work is multi-step, stateful, long-running, and collaborative across agents touching the same files. The 'compose -> validate -> persist a complete document' pipeline (agent-architecture.md Scout pipeline) doesn't model partial progress, blocked tasks, dependencies, or concurrent edits \u2014 the harness 'write only your own branch' adaptation and a real dependency/state model are needed, not just a status enum.",
+   "CORRECTNESS IS PROBABILISTIC, NOT SCHEMA-CHECKABLE. The whole content-integrity spine assumes 'zod-valid + source-grounded + human-approved = trustworthy.' Source-grounding makes a science claim verifiable; nothing analogous makes generated code correct. The gate must shift to CI/tests/coverage/review signals (and likely a reviewing agent), and the merge precondition must include 'CI green,' which the current publishAuthorized does not model.",
+   "SINGLE-ADMIN ASSUMPTIONS LEAK THROUGH THE STACK. Several Knovo decisions explicitly rely on 'a single trusted admin' (DB-stored routine tokens in plaintext per 0008/Decision 8; audience-salt residual caveat; 'acceptable under the single-admin model'). For multi-tenant LoopRR these become per-tenant secrets at rest for many distrusting clients \u2014 encryption-at-rest (deferred in Knovo's BACKLOG) and per-tenant token isolation move from 'deferred' to 'required.'",
+   "COST / CONCURRENCY / TIMEOUT MODEL DIFFERS. Knovo runs ~one short artifact/day per worker, with heavy work off-Vercel in the Claude routine and the API doing only short request/response. An autonomous dev team runs long, parallel, expensive coding sessions with CI loops; the 'Vercel only does short actions' assumption (technical-architecture.md) and the daily-cadence quota model (monetization.md) need rethinking for sustained concurrent agent execution and its cost."
+  ],
+  "open_questions": [
+   "Does the Keeper->QA repurpose keep Knovo's 'flag, don't fix live' discipline, or do clients expect the maintenance agent to auto-open fix PRs? That choice changes its verb scope and trust level.",
+   "Is the blog/forum + reader_comments surface repurposed into a client-facing project portal (status, deliverables, approvals) or a private inter-agent forum/work-log \u2014 or both, as two views over the same audit/comment data?",
+   "What is LoopRR's analog of 'published' for a multi-step deliverable \u2014 merged PR, deployed release, or client-accepted milestone \u2014 and does the human gate sit at PR-merge, at deploy, or at both?",
+   "Where does code truth live and how is the second (git) write boundary governed \u2014 branch protection + required reviews enforced by GitHub, by the governed API, or both, and how do they stay consistent with the DB-side audit log?",
+   "How are CI-green and test/coverage signals fed into the merge precondition (extending publishAuthorized), and is a dedicated reviewing agent part of the gate or is review always human?",
+   "Per-tenant quota unit: agent-runs, PRs, merged PRs, or compute-minutes \u2014 and how is long, concurrent, expensive coding execution metered and capped at the API boundary without starving in-flight work?",
+   "Does each tenant get an isolated execution sandbox + scoped CI secrets, and what egress controls bound a coding agent that pulls arbitrary dependencies?"
+  ]
+ },
+ "platform": {
+  "summary": "TEST",
+  "adopt": [
+   {
+    "idea": "Three trigger types (schedule cron, API fire-URL, GitHub events) driving the same routine, combinable",
+    "source": "https://code.claude.com/docs/en/routines",
+    "why": "Exactly LoopRR's premise and supported. One routine can carry schedule + API + GitHub triggers at once, so one loop-tick is reachable by cron, external POST, and repo events.",
+    "how_in_looprr": "Each loop role is one routine with a self-contained prompt: heartbeat schedule (>=1h) for liveness, fire-URL for external/manual/agent kicks, PR-event for reactive work. Each fire is one stateless tick."
+   }
+  ],
+  "reject": [
+   {
+    "idea": "placeholder",
+    "why_not": "placeholder"
+   }
+  ],
+  "risks": [
+   "placeholder"
+  ],
+  "open_questions": [
+   "placeholder"
+  ]
+ }
+}
