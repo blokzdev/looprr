@@ -5,10 +5,10 @@ in-progress · `[x]` done (green build gate) · `[!]` blocked (see HUMAN.md). **
 green build gate.** Never cross an unmet CHECKPOINT. Sequencing rule: **never let the moat-engine,
 replay, the storefront, or multi-tenancy precede a loop that has closed at least once.**
 
-> Status: **Phase 0 complete + merged (PR #1 → main); P1 in progress.** Gate passed 2026-06-27 — the
-> Co-Founder ratified D-01…D-09 and greenlit P1 (`HUMAN.md`). Phase 0 + P1.1 merged to `main` on
-> 2026-07-16; per the loop, each subphase now gets its own branch/PR. **P1.2 done (2026-07-16)** on
-> branch `claude/looprr-phase-1-continue-mcvfik`.
+> Status: **Phase 1 in progress. P1.1 + P1.2 merged to `main` (PRs #1, #2, 2026-07-16).** Both DBs
+> live + schema-identical (`looprr-dev`/`looprr-prod`, `0001_init`). **G1 is met except the *live*
+> route proof** — the next step, **P1.4 (deploy to Vercel)**, delivers it. Operator setup: `SETUP.md`.
+> One PR per subphase from latest `main`.
 
 ---
 
@@ -38,10 +38,15 @@ Port-selective from Knovo; one subphase per slice; build gate green before each 
   - [x] **gate:** typecheck + 28 unit tests green; live DB-layer replay on dev (create→revision→audit, dedup views, queue join, `UNIQUE(kind,uid)`, soft-delete filter, rejected-feeds-dedup, `updated_at` trigger); self-skipping E2E route harness committed (`test/integration/`, runs once the service-role key is in env).
 - **P1.3 — RLS policies + harden the unrun spine**
   - [x] RLS **enabled** default-deny on every table (baked into `0001`); agent governance enforced in the API (service-role); `get_advisors(security)` clean. *(Baseline done in P1.2.)*
-  - [ ] Author the browser/admin RLS **policies** (when the HUD/auth lands) + full advisors closure; add a **live** cross-role denial test (complements the unit test; VERIFICATION.md)
-  - [ ] `.env.example` lockstep (no new vars in P1.2); CI already gates typecheck+test (added in P1.1)
-- [ ] **CHECKPOINT G1:** CI green; a ticket can be created/transitioned by a verb-scoped token through the governed API; cross-role denials proven by test; audit+revision rows on every mutation; `.env.example` lockstep
-> *(Numbering note: G1 here is the merged "repoint" checkpoint; the loop-closing checkpoint is G2 below.)*
+  - [ ] Author the browser/admin RLS **policies** — *deferred: needs the HUD/auth principal (no browser/admin user exists yet; default-deny is the correct, safe state until then). Lands with the HUD.* + full advisors closure.
+  - [x] `.env.example` lockstep (no new vars in P1.2); CI gates typecheck+test (P1.1).
+- **P1.4 — Make the governed API live on Vercel (deployability + live E2E)** · *proposed next step — awaiting go-ahead*
+  Wire the frozen stack (D-10) that P1.2 deferred, so the routines can actually call the API and we get real-infra verification. **Closes the last open G1 item (live route proof).** Operator steps in `SETUP.md`.
+  - [ ] Wire Next.js App Router: add `next`/`react` deps, `next.config`, tsconfig JSX, a minimal app shell + `/api/health`; the `/api/agent/*` handlers deploy as-is (no rework). Add `next build` to CI.
+  - [ ] **Human:** connect `blokzdev/looprr` to Vercel + set the six prod env vars (`SETUP.md` §3–4); generate the four agent tokens (`HUMAN.md` H-04).
+  - [ ] **Live E2E smoke** against the deployed prod app over HTTP with an agent token (create→transition→dedup→queue→soft-delete + verb denials); read Vercel runtime logs via MCP. Records into `VERIFICATION.md`.
+- [ ] **CHECKPOINT G1:** CI green ✅; a ticket created/transitioned by a verb-scoped token through the governed API (DB-layer + unit ✅; **live pending P1.4**); cross-role denials proven by test ✅ (unit; live pending P1.4); audit+revision rows on every mutation ✅; `.env.example` lockstep ✅. → **G1 is met except the live proof, which P1.4 delivers.**
+> *(Numbering note: G1 here is the merged "repoint" checkpoint; the loop-closing checkpoint is G2 below. RLS **policy** authoring is intentionally carried past G1 to the HUD — default-deny holds the line meanwhile.)*
 
 ## Phase 2 — Close the loop on ONE repo + ledger from day one · *gated on G1a*
 - [ ] Wire the GitHub App (server-side token); routines push `claude/*` branches only
