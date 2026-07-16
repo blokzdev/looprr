@@ -96,7 +96,7 @@ describe.skipIf(!HAS_ENV)("governed agent API (looprr-dev, end to end)", () => {
   it("re-validates + snapshots a prior revision on update", async () => {
     const res = await patchTicket(
       req(TOKENS.planner, { doc: { ...validDoc, summary: "Edited summary." }, note: "tighten" }),
-      { params: { id: ticketId } },
+      { params: Promise.resolve({ id: ticketId }) },
     );
     expect(res.status).toBe(200);
     const { count } = await admin.from("revisions").select("*", { count: "exact", head: true }).eq("ticket_id", ticketId);
@@ -105,7 +105,7 @@ describe.skipIf(!HAS_ENV)("governed agent API (looprr-dev, end to end)", () => {
 
   it("enforces verb-scoped denials (least privilege)", async () => {
     // Planner cannot transition status (no transition_status verb).
-    const t = await transitionStatus(req(TOKENS.planner, { to: "in_review" }), { params: { id: ticketId } });
+    const t = await transitionStatus(req(TOKENS.planner, { to: "in_review" }), { params: Promise.resolve({ id: ticketId }) });
     expect(t.status).toBe(403);
     // Reviewer cannot create tickets (no create_ticket verb).
     const c = await createTicket(req(TOKENS.reviewer, { doc: validDoc, upstream: [{ kind: "issue", uid: "ITEST-9", role: "primary" }] }));
@@ -126,7 +126,7 @@ describe.skipIf(!HAS_ENV)("governed agent API (looprr-dev, end to end)", () => {
     const items1 = (await q1.json()).items as { directive_id: string }[];
     expect(items1.some((i) => i.directive_id === dir!.id)).toBe(true);
 
-    const r = await resolveDirective(req(TOKENS.implementer, { status: "addressed" }), { params: { id: dir!.id } });
+    const r = await resolveDirective(req(TOKENS.implementer, { status: "addressed" }), { params: Promise.resolve({ id: dir!.id }) });
     expect(r.status).toBe(200);
 
     const q2 = await queue(req(TOKENS.implementer));
@@ -135,11 +135,11 @@ describe.skipIf(!HAS_ENV)("governed agent API (looprr-dev, end to end)", () => {
   });
 
   it("soft-deletes (recoverable) and then 404s", async () => {
-    const del = await deleteTicket(req(TOKENS.planner), { params: { id: ticketId } });
+    const del = await deleteTicket(req(TOKENS.planner), { params: Promise.resolve({ id: ticketId }) });
     expect(del.status).toBe(200);
     const { data } = await admin.from("tickets").select("deleted_at").eq("id", ticketId).single();
     expect(data?.deleted_at).not.toBeNull();
-    const again = await deleteTicket(req(TOKENS.planner), { params: { id: ticketId } });
+    const again = await deleteTicket(req(TOKENS.planner), { params: Promise.resolve({ id: ticketId }) });
     expect(again.status).toBe(404);
   });
 });

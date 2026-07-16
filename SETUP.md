@@ -68,9 +68,9 @@ and the four `LOOPRR_AGENT_TOKEN_*`, or every `/api/agent/*` call returns `401`.
 
 ## 4. Deploy to Vercel
 
-> **Prerequisite:** the Next.js framework must be wired up first (roadmap **P1.4** — the routes are
-> already Next-compatible handlers, so this is a mechanical slice with no rework). Until then there is
-> no build for Vercel to run. The steps below are what you'll do **once P1.4 lands**.
+> **Ready:** the Next.js framework is wired (P1.4 — **next@16 + React 19**, App Router). `next build`
+> is green and the `/api/agent/*` routes + `/api/health` serve locally. Vercel will detect Next.js and
+> build with no extra config.
 
 1. **Vercel → Add New → Project →** import `blokzdev/looprr`. Framework preset: **Next.js**.
 2. **Settings → Environment Variables** — add the six "now" vars from §3 (prod URL, service-role key,
