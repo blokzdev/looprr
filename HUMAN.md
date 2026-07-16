@@ -31,7 +31,8 @@ cannot do it), `CARVE-OUT` (deliberate deferral), `OPEN-Q`.
 | C-01 | Multi-agent planning Workflow (11 agents) + personal adversarial validation for Phase-0. | DONE | `research/synthesis/`. |
 | C-02 | Imported all 5 research PDFs (incl. 21 MB SemaClaw). | DONE | Move to git-LFS later if repo weight matters. |
 | C-03 | Collapsed MIRIX 6 memory types → 4 dev-native. | DONE | `foundation/memory-and-ledger.md`. |
-| C-04 | Phase 0 lands + P1 continues on the single session branch `claude/looprr-phase-0-setup-uh6h9h` (per the session's branch directive), rather than one-PR-per-subphase. | ACTIVE | If you'd prefer clean per-subphase PRs, say so and I'll merge #1 and branch P1 separately. |
+| C-04 | Phase 0 lands + P1 continues on the single session branch `claude/looprr-phase-0-setup-uh6h9h` (per the session's branch directive), rather than one-PR-per-subphase. | ~~ACTIVE~~ **SUPERSEDED** | 2026-07-16: merged PR #1 → `main`; now one-PR-per-subphase per the loop. |
+| C-05 | **P1.2 build calls:** (a) **defer the Next.js framework/build** — routes are Next-App-Router-compatible handlers in `app/api/agent/*` but the framework/deploy pipeline waits for the HUD (no UI to deploy yet; Vercel + prod secrets are human-owned, H-02); (b) **defer `tenant_id`** to P5 (D-06); (c) **RLS enabled default-deny in `0001`** (policies in P1.3); (d) added verbs `pull_queue` (all roles) + `update_ticket` (planner); (e) P1.2 **transition-policy baseline** (worker targets = planned/claimed/in_progress/in_review/archived; `merged` = GitHub gate; human owns approved/changes_requested/rejected) — exact role×transition + loop-back wiring refined in P2. | ACTIVE | All overridable — say the word. `foundation/data-model.md` Open questions tracks the P2 refinements. |
 
 ## Carve-outs / deferrals (CARVE-OUT)
 | ID | Item | Note |
@@ -42,7 +43,8 @@ cannot do it), `CARVE-OUT` (deliberate deferral), `OPEN-Q`.
 | ID | Item | Note |
 |---|---|---|
 | H-01 | Provision a **GitHub App** (server-side token) + set branch protection on target repos. | Needed before P2 (the real merge gate). |
-| H-02 | ~~Create the LoopRR Supabase projects~~ → **Claude can now do this** via the Supabase MCP ($0/mo; `memory/facts/0006`). Human still owns: the **Vercel project**, and handling **production secrets** (service-role key, GitHub App key) in Vercel/env. | Project creation needs your one-word go (account resource). Zero secrets in the repo. |
+| H-02 | ~~Create the LoopRR Supabase projects~~ → **DONE (2026-07-16):** `looprr-dev` + `looprr-prod` created; `0001` applied to dev (prod at merge, your standing OK). Free-tier caps 2 active projects → **`knovo-prod` paused** (you authorized taking down the Knovo DBs; reversible, data preserved; MCP can't hard-delete — dashboard if you want that). Human **still owns**: the **Vercel project** + **production secrets** (service-role key, GitHub App key) in Vercel/env — needed before an actual deploy. | `memory/facts/0007`. Zero secrets in the repo. |
+| H-04 | **Set the Vercel env for `looprr-prod`** (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, agent tokens) when wiring the deploy — the service-role key is a secret the MCP won't hand out, so the route-level E2E test + the live app both need you to set it. | Unblocks `npm run test:integration` E2E + the Vercel deploy. |
 | H-03 | Confirm the remaining platform fact (Q-01). | Narrowed below. |
 
 ## Open questions (OPEN-Q)

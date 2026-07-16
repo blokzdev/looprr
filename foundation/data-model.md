@@ -8,10 +8,14 @@ boundary). Content/molecular tables are dropped; coordination/ledger/memory tabl
 
 ### tickets *(repurposed from Knovo `artifacts`)*
 The unit of work. Keep zod for **shape only** (D-08), keep versioning/migrate-on-read discipline.
+**As built (`0001_init`, P1.2):** columns below **except `tenant_id`**, which is **deferred to P5** (D-06
+sequence wall — single-operator first; the discriminator + isolation-first test land with the second
+principal, not now). Actor columns (`claimed_by`/`reviewed_by`/`last_worker`) are `text`
+(`agent:<role>｜admin:<uid>`) — no `profiles`/auth FK until the HUD lands.
 | column | type | notes |
 |---|---|---|
 | id | uuid PK | |
-| tenant_id | uuid | defaulted single-tenant until P5 |
+| tenant_id | uuid | **P5 (deferred, not in `0001`)** — add + backfill + RLS predicate when a second principal is in sight |
 | slug | text UNIQUE | |
 | title / summary | text | |
 | status | enum | `draft｜planned｜claimed｜in_progress｜in_review｜changes_requested｜approved｜merged｜rejected｜archived` |
@@ -94,11 +98,19 @@ dedup a property of the data, not the routine's memory (Knovo's pattern).
 
 ## RLS / tenancy
 RLS bounds browser/admin access; the **agent path is the API (service-role, bypasses RLS) — agent
-governance is enforced in the API**, not RLS (Knovo's model). Multi-tenant (P5): add `tenant_id NOT
-NULL` everywhere + per-policy tenant predicate; `is_admin()` → `is_tenant_admin(tenant_id)`; per-
-`(tenant, role)` tokens; the **TenantA-cannot-read-TenantB isolation test is written first** (D-06).
+governance is enforced in the API**, not RLS (Knovo's model). **As built (`0001`, P1.2):** RLS is
+**enabled default-deny on every table with no policies yet** (secure baseline; the service-role API is
+the only reader/writer). P1.3 authors the browser/admin **policies** when the HUD/auth exists.
+Multi-tenant (P5): add `tenant_id NOT NULL` everywhere + per-policy tenant predicate; `is_admin()` →
+`is_tenant_admin(tenant_id)`; per-`(tenant, role)` tokens; the **TenantA-cannot-read-TenantB isolation
+test is written first** (D-06).
 
 ## Open questions
-- Ticket-doc schema shape (the `doc` jsonb) — define at P1.
-- Whether `clock_events` carries `tenant_id` from P2 (cheap) or at P5 — currently include the column,
-  defaulted, from P2.
+- ~~Ticket-doc schema shape (the `doc` jsonb) — define at P1.~~ **Resolved (P1.2):** `lib/ticket-schema.ts`
+  v1 = `{schemaVersion, title, summary, goal, acceptanceCriteria[], context?, constraints?, plan?}`,
+  `.strict()` (no-escape), versioned registry (migrate-on-read). Bump the version to add fields.
+- Whether `clock_events` (P2) carries `tenant_id` from P2 (cheap) or at P5 — decide at P2. **Tickets et al.
+  omit `tenant_id` for now** (deferred to P5 per D-06); reconcile the ledger's choice against that then.
+- **P2 transition policy:** the exact role×status ownership + FROM-state guards + the reviewer-flag →
+  `changes_requested` loop-back wiring (P1.2 baseline: worker-reachable = planned/claimed/in_progress/
+  in_review/archived; `merged` is the GitHub-native gate; human owns approved/changes_requested/rejected).

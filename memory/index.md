@@ -15,8 +15,9 @@ Confidence tags: ✅ verified by Claude against real files/tools · ⚠️ from 
 | 0004 | Research grounding: what to adopt from MIRIX/MAGMA/GAM/Mem0/SemaClaw | 🔵 | `facts/0004-research-grounding.md` |
 | 0005 | Stack, env vars, and local-dev facts | 🔵 | `facts/0005-stack-and-env.md` |
 | 0006 | Supabase MCP access — run SQL/migrations directly in build sessions ($0 projects, postgres role) | ✅ | `facts/0006-supabase-access.md` |
+| 0007 | LoopRR Supabase projects (`looprr-dev`/`looprr-prod` refs) + free-tier 2-active cap (knovo-prod paused) + schema `0001` | ✅ | `facts/0007-looprr-dbs.md` |
 
 ## Standing reminders
-- The product BUILD is gated on human ratification of the pending DECISIONS (HUMAN.md D-01…D-09).
-- Two repos exist locally: `/home/user/Knovo` (the spine to port from) and `/home/user/looprr` (this).
-- Branch for all work: `claude/looprr-phase-0-setup-uh6h9h`.
+- Phase 0 + P1.1 are **merged to `main`** (PR #1, 2026-07-16). D-01…D-09 frozen. Build proceeds per the loop.
+- Two repos exist locally: `/home/user/Knovo` (the spine to port from; DBs now paused) and `/home/user/looprr` (this).
+- Each subphase gets its own branch/PR now. This slice (P1.2): `claude/looprr-phase-1-continue-mcvfik`.

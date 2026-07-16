@@ -20,4 +20,12 @@ verify · how · last result · who/when**.
 | Cross-role denial (live) | With each role token, attempt an out-of-scope verb; confirm the API denies (complements the unit test). | — | — |
 
 ## Verified
-_(none yet — Phase 0)_
+| Surface | Concrete check | Last result | When |
+|---|---|---|---|
+| Schema `0001` on live Postgres | `apply_migration` to `looprr-dev` + `get_advisors(security)`. | ✅ Applied clean; advisors = only expected `rls_enabled_no_policy` INFO (no errors — no `rls_disabled_in_public`, no `security_definer_view`, no `function_search_path_mutable`). | Claude · 2026-07-16 |
+| Governed-write DB layer (dev) | `execute_sql` replay of the route operations against `looprr-dev`. | ✅ create→link→revision→audit (FK-intact); `seen`/`rejected` dedup views correct; queue join returns actionable-only (plain note excluded); `UNIQUE(kind,uid)` rejects dup (23505); soft-delete removes from `seen` view; rejected ticket feeds `rejected` view; `set_updated_at` trigger fires. Dev truncated to pristine after. | Claude · 2026-07-16 |
+
+## Pending (needs the service-role key in env — the Supabase MCP won't hand it out)
+| Surface | Concrete check | Last result | When |
+|---|---|---|---|
+| Governed API E2E (routes) | `npm run test:integration` against `looprr-dev` (self-skipping suite in `test/integration/`) — drives the real route handlers (auth → validate → dedup → provenance → revision → audit → soft-delete + verb denials). | — (runs once `SUPABASE_SERVICE_ROLE_KEY` is set locally / in Vercel env — H-04) | — |
