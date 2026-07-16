@@ -20,7 +20,7 @@ const body = z.object({
 // Workers may target only worker-reachable statuses (the zod enum here mirrors WORKER_TARGETS; the
 // human owns approved/changes_requested/rejected). `merged` is the GitHub-native gate (D-03) — never
 // settable by a DB write. Archiving a MERGED ticket requires an 'archive' directive.
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = authenticateAgent(req);
   if (!agent) return err(401, "unauthorized", "Missing or invalid agent token.");
   if (!agent.can("transition_status")) {
@@ -37,12 +37,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return err(403, "transition_forbidden", `Workers cannot set status '${to}'.`);
   }
 
+  const { id } = await params;
   const db = createAdminClient();
   const actor = `agent:${agent.id}`;
   const { data: current, error: readErr } = await db
     .from("tickets")
     .select("id, status, deleted_at")
-    .eq("id", params.id)
+    .eq("id", id)
     .maybeSingle();
   if (readErr) return err(500, "read_failed", readErr.message);
   if (!current || current.deleted_at) return err(404, "not_found", "Ticket not found.");

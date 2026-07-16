@@ -24,8 +24,10 @@ verify · how · last result · who/when**.
 |---|---|---|---|
 | Schema `0001` on live Postgres | `apply_migration` to `looprr-dev` + `get_advisors(security)`. | ✅ Applied clean; advisors = only expected `rls_enabled_no_policy` INFO (no errors — no `rls_disabled_in_public`, no `security_definer_view`, no `function_search_path_mutable`). | Claude · 2026-07-16 |
 | Governed-write DB layer (dev) | `execute_sql` replay of the route operations against `looprr-dev`. | ✅ create→link→revision→audit (FK-intact); `seen`/`rejected` dedup views correct; queue join returns actionable-only (plain note excluded); `UNIQUE(kind,uid)` rejects dup (23505); soft-delete removes from `seen` view; rejected ticket feeds `rejected` view; `set_updated_at` trigger fires. Dev truncated to pristine after. | Claude · 2026-07-16 |
+| Next.js build + live HTTP (P1.4) | `next build` + `next start` and curl the running server (next@16 / react@19). | ✅ Build compiles + type-checks; all `/api/agent/*` + `/api/health` are `ƒ` (dynamic). Live: `GET /api/health`→200; no-token→401; wrong-verb (planner→status)→403; implementer→status reaches the DB path (500 only for lack of a local service-role key) — confirms the async-`params` handler runs end-to-end. | Claude · 2026-07-16 |
 
 ## Pending (needs the service-role key in env — the Supabase MCP won't hand it out)
 | Surface | Concrete check | Last result | When |
 |---|---|---|---|
 | Governed API E2E (routes) | `npm run test:integration` against `looprr-dev` (self-skipping suite in `test/integration/`) — drives the real route handlers (auth → validate → dedup → provenance → revision → audit → soft-delete + verb denials). | — (runs once `SUPABASE_SERVICE_ROLE_KEY` is set locally / in Vercel env — H-04) | — |
+| Live prod E2E (deployed app) | Once the human connects Vercel + sets env (H-04): curl the deployed `/api/agent/*` with an agent token (create→transition→dedup→queue→soft-delete + denials); read Vercel runtime logs via MCP. **Closes G1's live proof.** | — (after the Vercel deploy) | — |

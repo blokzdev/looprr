@@ -11,7 +11,7 @@ const body = z.object({
 // POST /api/agent/directives/:id/resolve — close out a directive after acting on it (any role, via
 // the shared `comment` verb). Marks it addressed (default) or dismissed and stamps addressed_by/at, so
 // the queue stops surfacing it. Audits against the ticket for traceability.
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = authenticateAgent(req);
   if (!agent) return err(401, "unauthorized", "Missing or invalid agent token.");
   if (!agent.can("comment")) {
@@ -21,12 +21,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const parsed = body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return err(400, "bad_request", parsed.error.issues.map((i) => i.message).join("; "));
 
+  const { id } = await params;
   const db = createAdminClient();
   const actor = `agent:${agent.id}`;
   const { data: current, error: readErr } = await db
     .from("directives")
     .select("id, ticket_id, status")
-    .eq("id", params.id)
+    .eq("id", id)
     .maybeSingle();
   if (readErr) return err(500, "read_failed", readErr.message);
   if (!current) return err(404, "not_found", "Directive not found.");

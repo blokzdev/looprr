@@ -6,19 +6,20 @@ import { audit, err, json } from "@/lib/agent-api";
 // planned → claimed (round-robin / single-owner). Refuses a ticket that is not claimable or is already
 // claimed by another actor. This is the ADVISORY ownership record; the deterministic anti-race
 // enforcement is the Supervisor's scope-aware dispatch + git (P2), not this row.
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = authenticateAgent(req);
   if (!agent) return err(401, "unauthorized", "Missing or invalid agent token.");
   if (!agent.can("claim")) {
     return err(403, "forbidden", `Agent '${agent.id}' cannot claim tickets.`);
   }
 
+  const { id } = await params;
   const db = createAdminClient();
   const actor = `agent:${agent.id}`;
   const { data: current, error: readErr } = await db
     .from("tickets")
     .select("id, status, claimed_by, deleted_at")
-    .eq("id", params.id)
+    .eq("id", id)
     .maybeSingle();
   if (readErr) return err(500, "read_failed", readErr.message);
   if (!current || current.deleted_at) return err(404, "not_found", "Ticket not found.");

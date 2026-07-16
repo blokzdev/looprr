@@ -12,7 +12,7 @@ const patchBody = z.object({
 // PATCH /api/agent/tickets/:id — update a ticket's doc in place (Planner). Re-validates shape,
 // snapshots the prior version to `revisions` (recoverability), audits. Editing a MERGED ticket (the
 // "live" state — the work landed) additionally requires an open directing directive.
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = authenticateAgent(req);
   if (!agent) return err(401, "unauthorized", "Missing or invalid agent token.");
   if (!agent.can("update_ticket")) {
@@ -23,12 +23,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!parsed.success) return err(400, "bad_request", parsed.error.issues.map((i) => i.message).join("; "));
   const { doc, note } = parsed.data;
 
+  const { id } = await params;
   const db = createAdminClient();
   const actor = `agent:${agent.id}`;
   const { data: current, error: readErr } = await db
     .from("tickets")
     .select("id, schema_version, doc, title, summary, status, deleted_at")
-    .eq("id", params.id)
+    .eq("id", id)
     .maybeSingle();
   if (readErr) return err(500, "read_failed", readErr.message);
   if (!current || current.deleted_at) return err(404, "not_found", "Ticket not found.");
@@ -74,19 +75,20 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 // DELETE /api/agent/tickets/:id — soft-delete a ticket (Planner). Sets deleted_at (recoverable) and
 // audits. Hard deletes never happen (invariant #2: soft-delete only; every mutation audited).
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const agent = authenticateAgent(req);
   if (!agent) return err(401, "unauthorized", "Missing or invalid agent token.");
   if (!agent.can("update_ticket")) {
     return err(403, "forbidden", `Agent '${agent.id}' cannot delete tickets.`);
   }
 
+  const { id } = await params;
   const db = createAdminClient();
   const actor = `agent:${agent.id}`;
   const { data: current, error: readErr } = await db
     .from("tickets")
     .select("id, deleted_at")
-    .eq("id", params.id)
+    .eq("id", id)
     .maybeSingle();
   if (readErr) return err(500, "read_failed", readErr.message);
   if (!current || current.deleted_at) return err(404, "not_found", "Ticket not found.");
